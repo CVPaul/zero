@@ -52,4 +52,5 @@ class StructBase(nn.Module):
         self.insert_time = 8
         self.order_type = 9
         self.insert_base = 10
-        self.order_size = 11
+        self.trade_prob = 11
+        self.order_size = 12
