@@ -210,7 +210,9 @@ class Platform(StructBase):
         bi = self.bid_order_loc[ii]
         price = tick.ask_price_1
         for i in range(st, st + bi):
-            if abs(price / self.bid_orders_[i][self.price] - 1.0) < 1e-7:
+            # float由于误差会出现0.03 != 0.02999的现象，所以容许1e-7的偏差
+            # 原本这里应该是ask_price <= order.price
+            if 1.0 - price / self.bid_orders_[i][self.price] >= -1e-7:
                 order = self.bid_orders_[i]
                 self.filled_orders[self.filled_orders_cnt] = order
                 self.filled_orders_cnt += 1
@@ -233,7 +235,9 @@ class Platform(StructBase):
         ai = self.ask_order_loc[ii]
         price = tick.bid_price_1
         for i in range(st, st + ai):
-            if abs(price / self.ask_orders_[i][self.price] - 1.0) < 1e-7:
+            # float由于误差会出现0.03 != 0.02999的现象，所以容许1e-7的偏差
+            # 原本这里应该是bid_price >= order.price
+            if price / self.ask_orders_[i][self.price] - 1.0 >= -1e-7:
                 order = self.ask_orders_[i]
                 self.filled_orders[self.filled_orders_cnt] = order
                 self.filled_orders_cnt += 1
