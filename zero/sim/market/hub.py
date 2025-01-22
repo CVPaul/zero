@@ -36,6 +36,7 @@ class Platform(StructBase):
         self.timestamp = 0
         self.source_ = source
         self.last_ticks = []
+        self.orders = []
 
     def list(self):
         cli = Client()
@@ -155,6 +156,17 @@ class Platform(StructBase):
                 self.positions[ii][self.short_unfilled_sell] += volume
             self.ask_order_loc[ii] += 1
             assert self.ask_order_loc[ii] <= self.max_hold_orders
+        # order: ins, timestamp, order_id, side, direction, price, volume, filled_volume, type(0:add/1:trade/2:cancel), prob
+        self.orders.append([self.tickers[ii], 
+                            self.timestamp, 
+                            action[self.order_id], 
+                            action[self.side], 
+                            action[self.direction], 
+                            action[self.price], 
+                            volume, 
+                            0, 
+                            0, 
+                            action[self.trade_prob]])
         prob = action[self.trade_prob]
         if prob > 1e-8 and np.random.uniform(0, 1) <= prob:
             if self.last_ticks[ii]:
@@ -199,6 +211,17 @@ class Platform(StructBase):
             if pi != len(rs):
                 if self.ask_order_loc[ii] > 0:
                     self.ask_orders_[st:st + len(rs)] = self.ask_orders_[rs]
+        # order: ins, timestamp, order_id, side, direction, price, volume, filled_volume, type(0:add/1:trade/2:cancel), prob
+        self.orders.append([self.tickers[ii], 
+                            self.timestamp, 
+                            action[self.order_id], 
+                            action[self.side], 
+                            action[self.direction], 
+                            action[self.price], 
+                            volume, 
+                            0, 
+                            2, 
+                            action[self.trade_prob]])
 
     def match(self, tick):
         # print("before match:", self.positions)
@@ -209,52 +232,90 @@ class Platform(StructBase):
         rs = []
         bi = self.bid_order_loc[ii]
         price = tick.ask_price_1
+        volume = tick.ask_volume_1
         for i in range(st, st + bi):
             # float由于误差会出现0.03 != 0.02999的现象，所以容许1e-7的偏差
             # 原本这里应该是ask_price <= order.price
             if 1.0 - price / self.bid_orders_[i][self.price] >= -1e-7:
                 order = self.bid_orders_[i]
-                self.filled_orders[self.filled_orders_cnt] = order
-                self.filled_orders_cnt += 1
-                volume = order[self.total_volume] - order[self.trade_volume]
+                if volume >= (order[self.total_volume] - order[self.trade_volume]) :
+                    self.filled_orders[self.filled_orders_cnt] = order
+                    self.filled_orders_cnt += 1
+                    trade_volume = order[self.total_volume] - order[self.trade_volume]
+                else :
+                    trade_volume = volume
+                    order[self.trade_volume] += volume
+                    rs.append(i)
+
                 if order[self.side] == 0: # long-buy --> long-open
-                    self.positions[ii][self.long_unfilled_buy] -= volume
-                    self.positions[ii][self.long_buy] += volume
+                    self.positions[ii][self.long_unfilled_buy] -= trade_volume
+                    self.positions[ii][self.long_buy] += trade_volume
                 else: # short-buy --> short-close
-                    self.positions[ii][self.short_unfilled_buy] -= volume
-                    self.positions[ii][self.short_buy] += volume
-                self.bid_orders_[i, self.order_id] = 0
+                    self.positions[ii][self.short_unfilled_buy] -= trade_volume
+                    self.positions[ii][self.short_buy] += trade_volume
+
+                # order: ins, timestamp, order_id, side, direction, price, volume, filled_volume, type(0:add/1:trade/2:cancel), prob
+                self.orders.append([tick.symbol, 
+                                    self.timestamp, 
+                                    order[self.order_id], 
+                                    order[self.side], 
+                                    order[self.direction], 
+                                    price, 
+                                    order[self.total_volume], 
+                                    trade_volume, 
+                                    1, 
+                                    0])
             else:
                 rs.append(i)
         self.bid_order_loc[ii] = len(rs)
         if bi != len(rs):
             if self.bid_order_loc[ii] > 0:
                 self.bid_orders_[st:st + len(rs)] = self.bid_orders_[rs]
+        self.bid_orders_[st + len(rs) : st + self.max_hold_orders] = 0
         # sell side
         rs = []
         ai = self.ask_order_loc[ii]
         price = tick.bid_price_1
+        volume = tick.bid_volume_1
         for i in range(st, st + ai):
             # float由于误差会出现0.03 != 0.02999的现象，所以容许1e-7的偏差
             # 原本这里应该是bid_price >= order.price
             if price / self.ask_orders_[i][self.price] - 1.0 >= -1e-7:
                 order = self.ask_orders_[i]
-                self.filled_orders[self.filled_orders_cnt] = order
-                self.filled_orders_cnt += 1
-                volume = order[self.total_volume] - order[self.trade_volume]
+                if volume >= (order[self.total_volume] - order[self.trade_volume]) :
+                    self.filled_orders[self.filled_orders_cnt] = order
+                    self.filled_orders_cnt += 1
+                    trade_volume = order[self.total_volume] - order[self.trade_volume]
+                else :
+                    trade_volume = volume
+                    order[self.trade_volume] += volume
+                    rs.append(i)
+
                 if order[self.side] == 0: # long-sell --> long-close
-                    self.positions[ii][self.long_unfilled_sell] -= volume
-                    self.positions[ii][self.long_sell] += volume
+                    self.positions[ii][self.long_unfilled_sell] -= trade_volume
+                    self.positions[ii][self.long_sell] += trade_volume
                 else: # short-sell --> short-open
-                    self.positions[ii][self.short_unfilled_sell] -= volume
-                    self.positions[ii][self.short_sell] += volume
-                self.ask_orders_[i, self.order_id] = 0
+                    self.positions[ii][self.short_unfilled_sell] -= trade_volume
+                    self.positions[ii][self.short_sell] += trade_volume
+
+                # order: ins, timestamp, order_id, side, direction, price, volume, filled_volume, type(0:add/1:trade/2:cancel), prob
+                self.orders.append([tick.symbol, 
+                                    self.timestamp, 
+                                    order[self.order_id], 
+                                    order[self.side], 
+                                    order[self.direction], 
+                                    price, 
+                                    order[self.total_volume], 
+                                    trade_volume, 
+                                    1, 
+                                    0])
             else:
                 rs.append(i)
         self.ask_order_loc[ii] = len(rs)
         if ai != len(rs):
             if self.ask_order_loc[ii] > 0:
                 self.ask_orders_[st:st + len(rs)] = self.ask_orders_[rs]
+        self.ask_orders_[st + len(rs) : st + self.max_hold_orders] = 0
 
     def on_tick(self, tick):
         ii = self.ticker2ii[tick.symbol]
@@ -318,6 +379,11 @@ class Platform(StructBase):
             md[46] = tick.ask_volume_10
         md[47] = 1 # lot_size
 
+
+    def dump(self, outdir=''):
+        # 第一个子列表作为列名，其余作为数据
+        df = pd.DataFrame(self.orders, columns=['ins', 'timestamp', 'order_id', 'side', 'direction', 'price', 'volume', 'filled_volume', 'type', 'prob'])
+        df.to_csv(f'{outdir}/replay.csv', index=False, encoding='utf-8')
 
 
 
