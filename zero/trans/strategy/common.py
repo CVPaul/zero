@@ -53,4 +53,5 @@ class StructBase(nn.Module):
         self.order_type = 9
         self.insert_base = 10
         self.trade_prob = 11
+        self.order_status = 11 # 在线的时候trade_prob不在起作用，可以作为order_status的复用
         self.order_size = 12

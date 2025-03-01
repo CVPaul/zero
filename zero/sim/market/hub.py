@@ -182,6 +182,7 @@ class Platform(StructBase):
             if pi != len(rs):
                 if self.bid_order_loc[ii] > 0:
                     self.bid_orders_[st:st + len(rs)] = self.bid_orders_[rs]
+                self.bid_orders_[st + len(rs):st + pi, self.order_id] = 0
         else: # sell
             pi = self.ask_order_loc[ii]
             for i in range(st, st + pi):
@@ -199,6 +200,7 @@ class Platform(StructBase):
             if pi != len(rs):
                 if self.ask_order_loc[ii] > 0:
                     self.ask_orders_[st:st + len(rs)] = self.ask_orders_[rs]
+                self.ask_orders_[st + len(rs):st + pi, self.order_id] = 0
 
     def match(self, tick):
         # print("before match:", self.positions)
